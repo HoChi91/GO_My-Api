@@ -1,0 +1,35 @@
+services:
+  api:
+    build: .
+    volumes:
+      - /Users/ashnguyen/Documents/Etna_Projects/GOLANG/API/MYAPI:/app   # Montre le répertoire de ton projet local dans le conteneur
+    ports:
+      - "4000:4000"  # Mappe le port 4000 du conteneur au port 4000 de l'hôte
+    depends_on:
+      - db  # S'assure que le service db est démarré avant le service api
+    environment:
+      - PORT=${PORT}
+      - DB_HOST=${DB_HOST}
+      - DB_PORT=${DB_PORT}
+      - DB_USER=${DB_USER}
+      - DB_PASSWORD=${DB_PASSWORD}
+      - DB_NAME=${DB_NAME}
+      - JWT_SECRET=${JWT_SECRET}
+    restart: always
+
+  db:
+    image: mariadb:latest  # Utilise la dernière version de l'image MariaDB
+    environment:
+      MYSQL_ROOT_PASSWORD: root123 # Le mot de passe root pour MariaDB
+      MYSQL_DATABASE: library  # Le nom de la base de données à créer
+      MYSQL_USER: API  # Crée un utilisateur avec ce nom
+      MYSQL_PASSWORD: API  # Définit le mot de passe pour l'utilisateur API
+    ports:
+      - "3307:3306"  # Expose le port 3306 du conteneur au port 3306 de l'hôte
+    volumes:
+      - db_data:/var/lib/mysql  # Persiste les données dans un volume pour ne pas les perdre si le conteneur est supprimé
+      - ./init-scripts:/docker-entrypoint-initdb.d
+    restart: always
+
+volumes:
+  db_data:  # Crée un volume Docker persistant pour les données MariaDB
