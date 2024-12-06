@@ -122,7 +122,7 @@ func CreateUser(c *gin.Context) {
 		return
 	}
 
-	helper.HandleResponse(c, 200, "Utilisateur créer avec succès !", user)
+	helper.HandleResponse(c, 200, "Utilisateur créer avec succès !", nil)
 }
 
 func ModifyUser(c *gin.Context) {

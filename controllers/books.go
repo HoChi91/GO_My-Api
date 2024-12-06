@@ -86,6 +86,41 @@ func GetBookByID(c *gin.Context) {
 	helper.HandleResponse(c, 200, "Livre", book)
 }
 
+func GetBooksByAuthorID(c *gin.Context) {
+	authorID := c.Param("id") // Récupère l'ID de l'auteur depuis l'URL
+	var books []models.Book   // Un tableau pour stocker les livres de l'auteur
+
+	// Requête SQL pour récupérer tous les livres de cet auteur
+	rows, err := database.DB.Query("SELECT * FROM BOOKS WHERE author=?", authorID)
+	if err != nil {
+		helper.HandleError(c, 500, "Erreur lors de la récupération des livres", err)
+		log.Printf("Erreur de récupération des livres : %v", err)
+		return
+	}
+	defer rows.Close()
+
+	// Parcours des lignes retournées par la requête
+	for rows.Next() {
+		var book models.Book
+		if err := rows.Scan(&book.ID, &book.Title, &book.Author, &book.Publication_Date, &book.Summary, &book.Stock, &book.Price); err != nil {
+			helper.HandleError(c, 500, "Erreur lors de l'analyse des livres", err)
+			log.Printf("Erreur d'analyse des livres : %v", err)
+			return
+		}
+		// Ajout du livre à la liste
+		books = append(books, book)
+	}
+
+	// Vérifie s'il y a des livres
+	if len(books) == 0 {
+		helper.HandleError(c, 404, "Aucun livre trouvé pour cet auteur", nil)
+		return
+	}
+
+	// Retourne les livres de l'auteur
+	helper.HandleResponse(c, 200, "Livres de l'auteur", books)
+}
+
 func CreateBook(c *gin.Context) {
 	var book models.Book
 	if err := c.ShouldBindJSON(&book); err != nil {

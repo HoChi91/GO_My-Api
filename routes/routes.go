@@ -69,8 +69,9 @@ func SetupRoutes() *gin.Engine {
 	{
 		BooksGroup.Use(middleware.AuthMiddleware("")) // Accessible à tous les utilisateurs authentifiés
 
-		BooksGroup.GET("", controllers.GetBooks)        // Route GET pour recuperer la liste des livres
-		BooksGroup.GET("/:id", controllers.GetBookByID) // Route GET pour recuperer un livre spécifique
+		BooksGroup.GET("", controllers.GetBooks)                      // Route GET pour recuperer la liste des livres
+		BooksGroup.GET("/:id", controllers.GetBookByID)               // Route GET pour recuperer un livre spécifique
+		BooksGroup.GET("/author/:id", controllers.GetBooksByAuthorID) // Route GET pour recuperer les livres d'un auteur spécifique
 
 		adminBooksGroup := BooksGroup.Group("")
 		adminBooksGroup.Use(middleware.AuthMiddleware("admin")) // Accessible à tous les admins
