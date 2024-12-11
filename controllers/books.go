@@ -17,14 +17,7 @@ func GetBooks(c *gin.Context) {
 
 	role, _ := c.Get("role")
 
-	// Requête en fonction du rôle de l'utilisateur
-	var query string
-	if role == "admin" {
-		query = "SELECT id, title, author, publication_date, summary, stock, price FROM BOOKS"
-	} else if role == "user" {
-		query = "SELECT id, title, author FROM BOOKS"
-	}
-
+	query := "SELECT id, title, author, publication_date, summary, stock, price FROM BOOKS"
 	// Exécution de la requête
 	rows, err = database.DB.Query(query)
 	if err != nil {
@@ -37,16 +30,9 @@ func GetBooks(c *gin.Context) {
 		var book models.Book
 
 		// Scanning des résultats selon la requête
-		if role == "admin" {
-			if err := rows.Scan(&book.ID, &book.Title, &book.Author, &book.Publication_Date, &book.Summary, &book.Stock, &book.Price); err != nil {
-				helper.HandleError(c, 500, "Erreur lors du scan des livres", err)
-				return
-			}
-		} else {
-			if err := rows.Scan(&book.ID, &book.Title, &book.Author); err != nil {
-				helper.HandleError(c, 500, "Erreur lors du scan des livres", err)
-				return
-			}
+		if err := rows.Scan(&book.ID, &book.Title, &book.Author, &book.Publication_Date, &book.Summary, &book.Stock, &book.Price); err != nil {
+			helper.HandleError(c, 500, "Erreur lors du scan des livres", err)
+			return
 		}
 
 		// Ajout du livre uniquement si le stock est supérieur à 0
