@@ -15,8 +15,7 @@ type CartItem struct {
 }
 
 type PurchaseRequest struct {
-	BookId   int
-	Quantity int
+	BookId   int `json:"bookId" validate:"required,min=1"`
+	Quantity int `json:"quantity" validate:"required,min=1"`
 }
-
 
