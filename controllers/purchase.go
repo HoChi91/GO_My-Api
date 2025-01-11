@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/go-playground/validator"
 )
 
 var userCarts = make(map[int][]models.CartItem)
@@ -39,6 +40,11 @@ func PurchaseBook(c *gin.Context) {
 	// Vérification du stock
 	if !CheckStock(purchaseRequest.BookId, purchaseRequest.Quantity, c) {
 		helper.HandleError(c, 400, "Stock insuffisant", nil)
+		return
+	}
+
+	if err := validator.New().Struct(purchaseRequest); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Données invalides", "details": err.Error()})
 		return
 	}
 
@@ -219,7 +225,7 @@ func FinalizeCart(c *gin.Context) {
 		return
 	}
 
-	userId, err := strconv.Atoi(userIDStr.(string)) // Conversion string -> int
+	userId, err := strconv.Atoi(userIDStr.(string))
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Invalid userID", "details": err.Error()})
 		return
@@ -231,20 +237,30 @@ func FinalizeCart(c *gin.Context) {
 		return
 	}
 
+	tx, err := database.DB.Begin()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Erreur lors de la création de la transaction", "details": err.Error()})
+		return
+	}
+
 	var totalAmount float64
 	timestamp := time.Now().Format("2006-01-02 15:04:05")
 
 	for _, item := range cart {
-		// Vérifier le stock
-		if !CheckStock(item.BookID, item.Quantity, c) {
+		// Vérification du stock
+		var stock int
+		err := tx.QueryRow("SELECT stock FROM BOOKS WHERE id = ?", item.BookID).Scan(&stock)
+		if err != nil || stock < item.Quantity {
+			tx.Rollback()
 			c.JSON(http.StatusBadRequest, gin.H{"error": "Stock insuffisant pour le livre", "bookId": item.BookID})
 			return
 		}
 
-		// Récupérer le prix du livre
+		// Récupération du prix
 		var bookPrice float64
-		err := database.DB.QueryRow("SELECT price FROM BOOKS WHERE id = ?", item.BookID).Scan(&bookPrice)
+		err = tx.QueryRow("SELECT price FROM BOOKS WHERE id = ?", item.BookID).Scan(&bookPrice)
 		if err != nil {
+			tx.Rollback()
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Erreur lors de la récupération du prix", "details": err.Error()})
 			return
 		}
@@ -252,28 +268,35 @@ func FinalizeCart(c *gin.Context) {
 		totalPrice := bookPrice * float64(item.Quantity)
 		totalAmount += totalPrice
 
-		// Insérer dans l'historique des achats
-		_, err = database.DB.Exec(`
+		// Insérer dans l'historique
+		_, err = tx.Exec(`
 			INSERT INTO PURCHASE_HISTORY (user, book, quantity, total_price, payment_timestamp) 
 			VALUES (?, ?, ?, ?, ?)`,
 			userId, item.BookID, item.Quantity, totalPrice, timestamp)
 
 		if err != nil {
+			tx.Rollback()
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Erreur lors de l'enregistrement de l'achat", "details": err.Error()})
 			return
 		}
 
 		// Mettre à jour le stock
-		_, err = database.DB.Exec(`UPDATE BOOKS SET stock = stock - ? WHERE id = ?`, item.Quantity, item.BookID)
+		_, err = tx.Exec(`UPDATE BOOKS SET stock = stock - ? WHERE id = ?`, item.Quantity, item.BookID)
 		if err != nil {
+			tx.Rollback()
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Erreur lors de la mise à jour du stock", "details": err.Error()})
 			return
 		}
 	}
 
-	// Vider le panier après finalisation
+	// Valider la transaction
+	if err = tx.Commit(); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Erreur lors de la validation de la transaction", "details": err.Error()})
+		return
+	}
+
+	// Vider le panier
 	delete(userCarts, userId)
 
 	c.JSON(http.StatusOK, gin.H{"message": "Achat finalisé avec succès", "totalAmount": totalAmount})
 }
-
