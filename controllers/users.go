@@ -53,21 +53,23 @@ func GetUsers(c *gin.Context) {
 }
 
 func GetUserByID(c *gin.Context) {
-	id := c.Param("id")
-
-	userID, _ := c.Get("userID")
-	role, _ := c.Get("role")
-
-	if role != "admin" {
-		if userID != id {
-			helper.HandleError(c, 403, "Accès refusé", nil)
-			return
-		}
-
+	// Récupérer l'ID utilisateur depuis le contexte (déjà défini par le middleware AuthMiddleware)
+	userID, exists := c.Get("userID")
+	if !exists {
+		helper.HandleError(c, 401, "ID utilisateur manquant dans le contexte", nil)
+		return
 	}
 
+	// Vérifier que l'ID est une chaîne de caractères
+	userIDStr, ok := userID.(string)
+	if !ok {
+		helper.HandleError(c, 401, "ID utilisateur mal formé", nil)
+		return
+	}
+
+	// Récupérer l'utilisateur depuis la base de données
 	var user models.User
-	err := database.DB.QueryRow("SELECT id, first_name, last_name, email, role FROM USERS WHERE id=?", id).
+	err := database.DB.QueryRow("SELECT id, first_name, last_name, email, role FROM USERS WHERE id=?", userIDStr).
 		Scan(&user.ID, &user.FirstName, &user.LastName, &user.Email, &user.Role)
 
 	if err == sql.ErrNoRows {
@@ -79,6 +81,7 @@ func GetUserByID(c *gin.Context) {
 		return
 	}
 
+	// Retourner les informations de l'utilisateur
 	helper.HandleResponse(c, 200, "Utilisateur", user)
 }
 
