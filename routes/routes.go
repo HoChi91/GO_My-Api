@@ -36,14 +36,15 @@ func SetupRoutes() *gin.Engine {
 	})
 
 	apiGroup := router.Group("/api")
-	AuthGroup := apiGroup.Group("/auth")              // Routes pour authentification
-	AuthGroup.POST("/login", controllers.Login)       // Connexion (pas sécurisé)
-	AuthGroup.POST("/signup", controllers.CreateUser) // Inscription (pas sécurisé)
+	AuthGroup := apiGroup.Group("/auth")               // Routes pour authentification
+	AuthGroup.POST("/login", controllers.Login)        // Connexion (pas sécurisé)
+	AuthGroup.POST("/signup", controllers.CreateUser)  // Inscription (pas sécurisé)
+	AuthGroup.GET("/check-auth", middleware.CheckAuth) // Verification token
 
 	UsersGroup := apiGroup.Group("/users") // Routes sécurisées pour les utilisateurs
 	{
 		UsersGroup.Use(middleware.AuthMiddleware(""))   // Accessible à tous les utilisateurs authentifiés
-		UsersGroup.GET("/:id", controllers.GetUserByID) // Récupération d'un utilisateur spécifique (si non admin renvoie uniquement les details de l'user connecté)
+		UsersGroup.GET("/you", controllers.GetUserByID) // Récupération d'un utilisateur spécifique (si non admin renvoie uniquement les details de l'user connecté)
 
 		adminUsersGroup := UsersGroup.Group("") // Routes accessibles uniquement aux admins
 		adminUsersGroup.Use(middleware.AuthMiddleware("admin"))
