@@ -2,7 +2,7 @@ services:
   api:
     build: .
     volumes:
-      - /Users/ashnguyen/Documents/Etna_Projects/GOLANG/API/MYAPI:/app   # Montre le répertoire de ton projet local dans le conteneur
+      - :/app   # Montre le répertoire de ton projet local dans le conteneur
     ports:
       - "4000:4000"  # Mappe le port 4000 du conteneur au port 4000 de l'hôte
     depends_on:
