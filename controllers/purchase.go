@@ -108,58 +108,52 @@ func GetAllPurchaseHistory(c *gin.Context) {
 }
 
 func GetPurchaseHistoryByID(c *gin.Context) {
-	// Récupérer l'ID depuis les paramètres de l'URL
-	id := c.Param("id")
-	userID, _ := c.Get("userID")
-	role, _ := c.Get("role")
+	id, _ := c.Get("userID")
 
-	if role != "admin" {
-		if userID != id {
-			helper.HandleError(c, 403, "Accès refusé", nil)
-			return
-		}
-
-	}
-
-	// Préparer la requête SQL
-	rows, err := database.DB.Query(`SELECT user, book, quantity, total_price, payment_timestamp FROM PURCHASE_HISTORY WHERE user = ?`, id)
+	// Requête pour récupérer l'historique des achats avec les détails des livres
+	rows, err := database.DB.Query(`
+		SELECT p.id, p.book, p.quantity, p.total_price, p.payment_timestamp, b.title, b.price
+		FROM PURCHASE_HISTORY p
+		JOIN BOOKS b ON p.book = b.id
+		WHERE p.user = ?`, id)
 	if err != nil {
 		helper.HandleError(c, 500, "Erreur lors de la récupération de l'historique pour cet utilisateur", err)
 		return
 	}
 	defer rows.Close()
 
-	var history []models.PurchaseHistory
+	var history []models.PurchaseHistoryWithBookDetails
 	for rows.Next() {
-		var item models.PurchaseHistory
-		if err := rows.Scan(&item.User, &item.Book, &item.Quantity, &item.Total_price, &item.Payment_timestamp); err != nil {
-			helper.HandleError(c, 500, "Erreur lors de la récupération de l'historique pour cet utilisateur", err)
+		var item models.PurchaseHistoryWithBookDetails
+		if err := rows.Scan(&item.ID, &item.BookID, &item.Quantity, &item.TotalPrice, &item.PaymentTimestamp, &item.BookTitle, &item.BookPrice); err != nil {
+			helper.HandleError(c, 500, "Erreur lors de la lecture de l'historique", err)
 			return
 		}
 		history = append(history, item)
 	}
 
-	// Vérifier si aucun historique n'a été trouvé
 	if len(history) == 0 {
 		helper.HandleError(c, 404, "Aucun historique trouvé pour cet utilisateur", nil)
 		return
 	}
 
-	c.JSON(http.StatusOK, history)
+	c.JSON(http.StatusOK, gin.H{"history": history})
 }
+
 
 func AddToCart(c *gin.Context) {
 	userIDStr, exists := c.Get("userID")
 	if !exists {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "User not authenticated"})
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Utilisateur non authentifié"})
 		return
 	}
 
 	userId, err := strconv.Atoi(userIDStr.(string)) // Conversion string -> int
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Invalid userID", "details": err.Error()})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "ID utilisateur invalide", "details": err.Error()})
 		return
 	}
+
 	var cartItem models.CartItem
 
 	// Récupérer les données JSON
@@ -174,10 +168,34 @@ func AddToCart(c *gin.Context) {
 		return
 	}
 
-	// Ajouter l'article au panier
-	userCarts[userId] = append(userCarts[userId], cartItem)
+	// Vérifier si le panier de l'utilisateur existe déjà
+	if _, exists := userCarts[userId]; !exists {
+		userCarts[userId] = []models.CartItem{}
+	}
 
-	c.JSON(http.StatusOK, gin.H{"message": "Article ajouté au panier avec succès"})
+	// Vérifier si le livre est déjà dans le panier
+	var updatedCart []models.CartItem
+	itemFound := false
+	for _, item := range userCarts[userId] {
+		if item.BookID == cartItem.BookID {
+			// Si le livre est déjà dans le panier, on met à jour la quantité
+			item.Quantity += cartItem.Quantity
+			updatedCart = append(updatedCart, item)
+			itemFound = true
+		} else {
+			updatedCart = append(updatedCart, item)
+		}
+	}
+
+	// Si l'article n'était pas dans le panier, on l'ajoute
+	if !itemFound {
+		updatedCart = append(updatedCart, cartItem)
+	}
+
+	// Mettre à jour le panier de l'utilisateur
+	userCarts[userId] = updatedCart
+
+	c.JSON(http.StatusOK, gin.H{"message": "Article ajouté/quantité mise à jour avec succès"})
 }
 
 func GetCart(c *gin.Context) {
@@ -188,16 +206,40 @@ func GetCart(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Invalid userID", "details": err.Error()})
 		return
 	}
+
 	// Vérifier si le panier existe
 	cart, exists := userCarts[userId]
 	if !exists {
 		// Si le panier est vide, retourner une réponse avec un tableau vide
-		c.JSON(http.StatusOK, gin.H{"cart": []models.CartItem{}})
+		c.JSON(http.StatusOK, gin.H{"cart": []models.CartItemWithDetails{}})
 		return
 	}
 
-	// Retourner le contenu du panier
-	c.JSON(http.StatusOK, gin.H{"cart": cart})
+	// Enrichir le panier avec les informations sur les livres
+	var cartWithBooks []models.CartItemWithDetails
+
+	for _, item := range cart {
+		// Requête pour récupérer les détails du livre (ex: titre et prix)
+		var book models.Book
+		err := database.DB.QueryRow("SELECT id, title, price FROM BOOKS WHERE id = ?", item.BookID).Scan(&book.ID, &book.Title, &book.Price)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Erreur lors de la récupération des informations du livre", "details": err.Error()})
+			return
+		}
+
+		// Ajouter les détails du livre au panier
+		cartItemWithDetails := models.CartItemWithDetails{
+			BookID:   item.BookID,
+			Quantity: item.Quantity,
+			Book:     book,
+		}
+
+		// Ajouter l'élément enrichi dans le panier
+		cartWithBooks = append(cartWithBooks, cartItemWithDetails)
+	}
+
+	// Retourner le panier avec les livres enrichis
+	c.JSON(http.StatusOK, gin.H{"cart": cartWithBooks})
 }
 
 func RemoveCart(c *gin.Context) {
@@ -218,6 +260,7 @@ func RemoveCart(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "Panier vidé avec succès"})
 }
 
+// FinalizeCart
 func FinalizeCart(c *gin.Context) {
 	userIDStr, exists := c.Get("userID")
 	if !exists {
@@ -269,11 +312,10 @@ func FinalizeCart(c *gin.Context) {
 		totalAmount += totalPrice
 
 		// Insérer dans l'historique
-		_, err = tx.Exec(`
-			INSERT INTO PURCHASE_HISTORY (user, book, quantity, total_price, payment_timestamp) 
-			VALUES (?, ?, ?, ?, ?)`,
-			userId, item.BookID, item.Quantity, totalPrice, timestamp)
-
+		_, err = tx.Exec(
+			"INSERT INTO PURCHASE_HISTORY (user, book, quantity, total_price, payment_timestamp) VALUES (?, ?, ?, ?, ?)",
+			userId, item.BookID, item.Quantity, totalPrice, timestamp,
+		)
 		if err != nil {
 			tx.Rollback()
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Erreur lors de l'enregistrement de l'achat", "details": err.Error()})
@@ -281,7 +323,7 @@ func FinalizeCart(c *gin.Context) {
 		}
 
 		// Mettre à jour le stock
-		_, err = tx.Exec(`UPDATE BOOKS SET stock = stock - ? WHERE id = ?`, item.Quantity, item.BookID)
+		_, err = tx.Exec("UPDATE BOOKS SET stock = stock - ? WHERE id = ?", item.Quantity, item.BookID)
 		if err != nil {
 			tx.Rollback()
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Erreur lors de la mise à jour du stock", "details": err.Error()})

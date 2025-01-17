@@ -44,7 +44,7 @@ func SetupRoutes() *gin.Engine {
 	UsersGroup := apiGroup.Group("/users") // Routes sécurisées pour les utilisateurs
 	{
 		UsersGroup.Use(middleware.AuthMiddleware(""))   // Accessible à tous les utilisateurs authentifiés
-		UsersGroup.GET("/you", controllers.GetUserByID) // Récupération d'un utilisateur spécifique (si non admin renvoie uniquement les details de l'user connecté)
+		UsersGroup.GET("/me", controllers.GetUserByID) // Récupération d'un utilisateur spécifique (si non admin renvoie uniquement les details de l'user connecté)
 
 		adminUsersGroup := UsersGroup.Group("") // Routes accessibles uniquement aux admins
 		adminUsersGroup.Use(middleware.AuthMiddleware("admin"))
@@ -89,12 +89,14 @@ func SetupRoutes() *gin.Engine {
 		PurchaseGroup.DELETE("/cart", controllers.RemoveCart)
 		PurchaseGroup.GET("/cart", controllers.GetCart)
 		PurchaseGroup.POST("/cart/finalize", controllers.FinalizeCart)
-		PurchaseGroup.GET("/history/:id", controllers.GetPurchaseHistoryByID)
+		PurchaseGroup.GET("/history/me", controllers.GetPurchaseHistoryByID)
 
 		adminPurchaseGroup := PurchaseGroup.Group("")
 		adminPurchaseGroup.Use(middleware.AuthMiddleware("admin")) // Accessible à tous les admins
 
 		adminPurchaseGroup.GET("/history", controllers.GetAllPurchaseHistory)
 	}
+
+
 	return router
 }

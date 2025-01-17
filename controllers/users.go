@@ -259,7 +259,7 @@ func Login(c *gin.Context) {
 	}
 
 	// Ajouter le token dans un cookie HTTP-only
-	c.SetCookie("token", tokenString, 86400, "/", "", false, true) // 86400 = 24 heures
+	c.SetCookie("token", tokenString, 86400, "/", "", true, true) // 86400 = 24 heures
 
 	helper.HandleResponse(c, 200, "Connexion réussi !", tokenString)
 }
